@@ -1,0 +1,93 @@
+// Master PIC18F8722 
+// 'C' source line config statements
+#include <xc.h>
+#include <pic18f8722.h>
+
+#define _XTAL_FREQ 8000000
+
+// #pragma config statements should precede project file includes.
+// Use project enums instead of #define for ON and OFF.
+
+// CONFIG
+#pragma config FOSC = XT   // Oscillator Selection bits (XT oscillator)
+#pragma config WDTE = OFF  // Watchdog Timer Enable bit (WDT disabled)
+#pragma config PWRTE = OFF // Power-up Timer Enable bit (PWRT disabled)
+#pragma config BOREN = OFF // Brown-out Reset Enable bit (BOR disabled)
+#pragma config LVP = OFF   // Low-Voltage In-Circuit Serial Programming Enable bit
+#pragma config CPD = OFF   // Data EEPROM Memory Code Protection bit 
+#pragma config WRT = OFF   // Flash Program Memory Write Enable bits 
+#pragma config CP = OFF    // Flash Program Memory Code Protection bit
+
+void I2C_Master_Init(const unsigned long c)
+{
+  SSPCON = 0b00101000;
+  SSPCON2 = 0;
+  SSPADD = (_XTAL_FREQ/(4*c))-1;
+  SSPSTAT = 0;
+  TRISC3 = 1;        //Setting as input as given in datasheet
+  TRISC4 = 1;        //Setting as input as given in datasheet
+}
+
+void I2C_Master_Wait()
+{
+  while ((SSPSTAT & 0x04) || (SSPCON2 & 0x1F));
+}
+
+void I2C_Master_Start()
+{
+  I2C_Master_Wait();
+  SEN = 1;
+}
+
+void I2C_Master_RepeatedStart()
+{
+  I2C_Master_Wait();
+  RSEN = 1;
+}
+
+void I2C_Master_Stop()
+{
+  I2C_Master_Wait();
+  PEN = 1;
+}
+
+void I2C_Master_Write(unsigned d)
+{
+  I2C_Master_Wait();
+  SSPBUF = d;
+}
+
+unsigned short I2C_Master_Read(unsigned short a)
+{
+  unsigned short temp;
+  I2C_Master_Wait();
+  RCEN = 1;
+  I2C_Master_Wait();
+  temp = SSPBUF;
+  I2C_Master_Wait();
+  ACKDT = (a)?0:1;
+  ACKEN = 1;
+  return temp;
+}
+
+void main()
+{
+  nRBPU = 0;                    //Enable PORTB internal pull up resistor
+  TRISB = 0xFF;                 //PORTB as input
+  TRISD = 0x00;                 //PORTD as output
+  PORTD = 0x00;                 //All LEDs OFF
+  I2C_Master_Init(100000);      //Initialize I2C Master with 100KHz clock
+  while(1)
+  {
+    I2C_Master_Start();         //Start condition
+    I2C_Master_Write(0x30);     //7 bit address + Write
+    I2C_Master_Write(PORTB);    //Write data
+    I2C_Master_Stop();          //Stop condition
+    __delay_ms(200);
+    I2C_Master_Start();         //Start condition
+    I2C_Master_Write(0x31);     //7 bit address + Read
+    PORTD = I2C_Master_Read(0); //Read + Acknowledge
+    I2C_Master_Stop();          //Stop condition
+    __delay_ms(200);
+  }
+}
